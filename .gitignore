@@ -6,6 +6,7 @@ dist-production/
 dist-supabase/
 dist-control/
 dist-control-v2/
+dist-control-v3/
 .electron-builder-cache/
 *.zip
 *.log

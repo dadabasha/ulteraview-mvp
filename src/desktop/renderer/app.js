@@ -33,6 +33,7 @@ const els = {
   joinCodeInput: document.querySelector('#joinCodeInput'),
   joinSessionButton: document.querySelector('#joinSessionButton'),
   requestControlButton: document.querySelector('#requestControlButton'),
+  testControlButton: document.querySelector('#testControlButton'),
   approveJoinButton: document.querySelector('#approveJoinButton'),
   rejectJoinButton: document.querySelector('#rejectJoinButton'),
   approveControlButton: document.querySelector('#approveControlButton'),
@@ -216,11 +217,13 @@ async function handleSignal(message) {
     case 'control.approved':
       state.controlGranted = true;
       els.revokeControlButton.disabled = state.role !== 'host';
+      els.testControlButton.disabled = state.role !== 'helper';
       log('Remote control approved.');
       break;
     case 'control.revoked':
       state.controlGranted = false;
       els.revokeControlButton.disabled = true;
+      els.testControlButton.disabled = true;
       log('Remote control revoked.');
       break;
     case 'chat.message':
@@ -348,8 +351,14 @@ async function receiveOffer(offer) {
 
 function sendControlEvent(payload) {
   if (!state.controlGranted || state.role !== 'helper') return;
-  if (!state.dataChannel || state.dataChannel.readyState !== 'open') return;
+  if (!state.dataChannel || state.dataChannel.readyState !== 'open') {
+    log('Control event not sent: data channel is not open.');
+    return;
+  }
   state.dataChannel.send(JSON.stringify(payload));
+  if (payload.kind !== 'mouse.move') {
+    log(`Sent control event: ${payload.kind}.`);
+  }
 }
 
 function resetSession() {
@@ -369,6 +378,7 @@ function resetSession() {
   els.sessionCode.textContent = '------';
   els.endSessionButton.disabled = true;
   els.requestControlButton.disabled = true;
+  els.testControlButton.disabled = true;
   els.revokeControlButton.disabled = true;
   els.approveJoinButton.classList.add('hidden');
   els.rejectJoinButton.classList.add('hidden');
@@ -410,6 +420,14 @@ els.rejectJoinButton.addEventListener('click', () => {
 });
 
 els.requestControlButton.addEventListener('click', () => send('control.request'));
+els.testControlButton.addEventListener('click', () => {
+  sendControlEvent({ kind: 'mouse.move', x: 0.5, y: 0.5 });
+  setTimeout(() => sendControlEvent({ kind: 'mouse.down', button: 0 }), 120);
+  setTimeout(() => sendControlEvent({ kind: 'mouse.up', button: 0 }), 180);
+  setTimeout(() => sendControlEvent({ kind: 'key.down', key: 'a', code: 'KeyA' }), 240);
+  setTimeout(() => sendControlEvent({ kind: 'key.up', key: 'a', code: 'KeyA' }), 300);
+  log('Sent test control sequence.');
+});
 els.approveControlButton.addEventListener('click', () => {
   els.approveControlButton.classList.add('hidden');
   send('control.approve');
