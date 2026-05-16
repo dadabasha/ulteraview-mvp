@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('ulteraview', {
   listSources: () => ipcRenderer.invoke('sources:list'),
   sendInput: (payload) => ipcRenderer.invoke('input:event', payload),
+  saveReceivedFile: (payload) => ipcRenderer.invoke('file:save-received', payload),
   signInWithGoogle: () => ipcRenderer.invoke('auth:google'),
   getAuthSession: () => ipcRenderer.invoke('auth:session'),
   signOut: () => ipcRenderer.invoke('auth:logout'),

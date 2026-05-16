@@ -1,5 +1,8 @@
 const DEFAULT_SIGNALING_URL = 'ws://localhost:8787';
 const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+const FILE_CHUNK_SIZE = 12 * 1024;
+const DATA_CHANNEL_HIGH_WATER_MARK = 1024 * 1024;
+const DATA_CHANNEL_LOW_WATER_MARK = 512 * 1024;
 
 const state = {
   mode: 'host',
@@ -13,7 +16,8 @@ const state = {
   pendingJoin: false,
   sourceId: null,
   signalingUrl: localStorage.getItem('signalingUrl') || DEFAULT_SIGNALING_URL,
-  account: JSON.parse(localStorage.getItem('account') || 'null')
+  account: JSON.parse(localStorage.getItem('account') || 'null'),
+  fileTransfers: new Map()
 };
 
 const els = {
@@ -33,7 +37,6 @@ const els = {
   joinCodeInput: document.querySelector('#joinCodeInput'),
   joinSessionButton: document.querySelector('#joinSessionButton'),
   requestControlButton: document.querySelector('#requestControlButton'),
-  testControlButton: document.querySelector('#testControlButton'),
   approveJoinButton: document.querySelector('#approveJoinButton'),
   rejectJoinButton: document.querySelector('#rejectJoinButton'),
   approveControlButton: document.querySelector('#approveControlButton'),
@@ -45,7 +48,10 @@ const els = {
   activityLog: document.querySelector('#activityLog'),
   chatMessages: document.querySelector('#chatMessages'),
   chatForm: document.querySelector('#chatForm'),
-  chatInput: document.querySelector('#chatInput')
+  chatInput: document.querySelector('#chatInput'),
+  fileInput: document.querySelector('#fileInput'),
+  sendFileButton: document.querySelector('#sendFileButton'),
+  fileStatus: document.querySelector('#fileStatus')
 };
 
 function log(message) {
@@ -60,7 +66,10 @@ function setStatus(message) {
 
 function updateControlButtons() {
   const dataChannelOpen = state.dataChannel?.readyState === 'open';
-  els.testControlButton.disabled = !(state.role === 'helper' && state.controlGranted && dataChannelOpen);
+  els.sendFileButton.disabled = !(dataChannelOpen && els.fileInput.files.length > 0);
+  els.fileStatus.textContent = dataChannelOpen
+    ? 'Ready to send files both ways.'
+    : 'Connect to a session to send files.';
 }
 
 function attachDataChannel(channel) {
@@ -80,15 +89,57 @@ function attachDataChannel(channel) {
     updateControlButtons();
   };
 
-  if (state.role === 'host') {
-    channel.onmessage = async (message) => {
-      if (!state.controlGranted) return;
-      const payload = JSON.parse(message.data);
-      await window.ulteraview.sendInput(payload);
-    };
-  }
+  channel.onmessage = (message) => {
+    handleDataChannelMessage(message).catch((error) => log(`Data channel message failed: ${error.message}`));
+  };
 
   updateControlButtons();
+}
+
+async function handleDataChannelMessage(message) {
+  const data = JSON.parse(message.data);
+
+  if (data.type === 'control.input') {
+    if (state.role !== 'host' || !state.controlGranted) return;
+    await window.ulteraview.sendInput(data.payload);
+    return;
+  }
+
+  if (data.type === 'file.start') {
+    state.fileTransfers.set(data.transferId, {
+      name: data.name,
+      size: data.size,
+      chunks: [],
+      receivedBytes: 0
+    });
+    log(`Receiving file: ${data.name}.`);
+    els.fileStatus.textContent = `Receiving ${data.name}...`;
+    return;
+  }
+
+  if (data.type === 'file.chunk') {
+    const transfer = state.fileTransfers.get(data.transferId);
+    if (!transfer) return;
+    transfer.chunks[data.index] = data.data;
+    transfer.receivedBytes += data.bytes || 0;
+    const percent = transfer.size ? Math.round((transfer.receivedBytes / transfer.size) * 100) : 0;
+    els.fileStatus.textContent = `Receiving ${transfer.name} (${percent}%).`;
+    return;
+  }
+
+  if (data.type === 'file.end') {
+    const transfer = state.fileTransfers.get(data.transferId);
+    if (!transfer) return;
+    const result = await window.ulteraview.saveReceivedFile({
+      name: transfer.name,
+      dataBase64: transfer.chunks.join('')
+    });
+    state.fileTransfers.delete(data.transferId);
+    if (result.ok) {
+      log(`File saved: ${result.path}`);
+      els.fileStatus.textContent = `Saved to ${result.path}`;
+    }
+  }
 }
 
 function renderAccount() {
@@ -381,10 +432,74 @@ function sendControlEvent(payload) {
     log('Control event not sent: data channel is not open.');
     return;
   }
-  state.dataChannel.send(JSON.stringify(payload));
+  state.dataChannel.send(JSON.stringify({ type: 'control.input', payload }));
   if (payload.kind !== 'mouse.move') {
     log(`Sent control event: ${payload.kind}.`);
   }
+}
+
+function uint8ToBase64(bytes) {
+  let binary = '';
+  for (let index = 0; index < bytes.length; index += 1) {
+    binary += String.fromCharCode(bytes[index]);
+  }
+  return btoa(binary);
+}
+
+function sendDataChannelMessage(payload) {
+  if (!state.dataChannel || state.dataChannel.readyState !== 'open') {
+    log('File not sent: data channel is not open.');
+    return false;
+  }
+  state.dataChannel.send(JSON.stringify(payload));
+  return true;
+}
+
+async function waitForDataChannelBuffer() {
+  while (state.dataChannel && state.dataChannel.bufferedAmount > DATA_CHANNEL_HIGH_WATER_MARK) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    if (state.dataChannel.bufferedAmount < DATA_CHANNEL_LOW_WATER_MARK) return;
+  }
+}
+
+async function sendSelectedFile() {
+  const file = els.fileInput.files[0];
+  if (!file) return;
+  if (!state.dataChannel || state.dataChannel.readyState !== 'open') {
+    log('File not sent: data channel is not open.');
+    return;
+  }
+
+  const transferId = crypto.randomUUID();
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const totalChunks = Math.ceil(bytes.length / FILE_CHUNK_SIZE);
+
+  sendDataChannelMessage({
+    type: 'file.start',
+    transferId,
+    name: file.name,
+    size: file.size,
+    totalChunks
+  });
+
+  for (let index = 0; index < totalChunks; index += 1) {
+    const start = index * FILE_CHUNK_SIZE;
+    const chunk = bytes.slice(start, start + FILE_CHUNK_SIZE);
+    await waitForDataChannelBuffer();
+    if (!sendDataChannelMessage({
+      type: 'file.chunk',
+      transferId,
+      index,
+      bytes: chunk.length,
+      data: uint8ToBase64(chunk)
+    })) return;
+    const percent = Math.round(((index + 1) / totalChunks) * 100);
+    els.fileStatus.textContent = `Sending ${file.name} (${percent}%).`;
+  }
+
+  sendDataChannelMessage({ type: 'file.end', transferId });
+  els.fileStatus.textContent = `Sent ${file.name}.`;
+  log(`File sent: ${file.name}.`);
 }
 
 function resetSession() {
@@ -398,6 +513,7 @@ function resetSession() {
   state.remoteStream = null;
   state.controlGranted = false;
   state.pendingJoin = false;
+  state.fileTransfers.clear();
   updateControlButtons();
   els.remoteVideo.srcObject = null;
   els.localPreview.srcObject = null;
@@ -405,7 +521,6 @@ function resetSession() {
   els.sessionCode.textContent = '------';
   els.endSessionButton.disabled = true;
   els.requestControlButton.disabled = true;
-  els.testControlButton.disabled = true;
   els.revokeControlButton.disabled = true;
   els.approveJoinButton.classList.add('hidden');
   els.rejectJoinButton.classList.add('hidden');
@@ -447,14 +562,6 @@ els.rejectJoinButton.addEventListener('click', () => {
 });
 
 els.requestControlButton.addEventListener('click', () => send('control.request'));
-els.testControlButton.addEventListener('click', () => {
-  sendControlEvent({ kind: 'mouse.move', x: 0.5, y: 0.5 });
-  setTimeout(() => sendControlEvent({ kind: 'mouse.down', button: 0 }), 120);
-  setTimeout(() => sendControlEvent({ kind: 'mouse.up', button: 0 }), 180);
-  setTimeout(() => sendControlEvent({ kind: 'key.down', key: 'a', code: 'KeyA' }), 240);
-  setTimeout(() => sendControlEvent({ kind: 'key.up', key: 'a', code: 'KeyA' }), 300);
-  log('Sent test control sequence.');
-});
 els.approveControlButton.addEventListener('click', () => {
   els.approveControlButton.classList.add('hidden');
   send('control.approve');
@@ -468,6 +575,11 @@ els.chatForm.addEventListener('submit', (event) => {
   if (!text) return;
   send('chat.message', { text });
   els.chatInput.value = '';
+});
+
+els.fileInput.addEventListener('change', updateControlButtons);
+els.sendFileButton.addEventListener('click', () => {
+  sendSelectedFile().catch((error) => log(`File send failed: ${error.message}`));
 });
 
 els.remoteVideo.addEventListener('mousemove', (event) => {

@@ -189,6 +189,17 @@ ipcMain.handle('input:event', async (_event, payload) => {
   return inputController.handleInput(payload);
 });
 
+ipcMain.handle('file:save-received', async (_event, payload) => {
+  const safeName = path.basename(payload.name || 'received-file').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_');
+  const receiveDir = path.join(app.getPath('downloads'), 'Ultraview Received');
+  const targetPath = path.join(receiveDir, safeName);
+
+  fs.mkdirSync(receiveDir, { recursive: true });
+  fs.writeFileSync(targetPath, Buffer.from(payload.dataBase64 || '', 'base64'));
+
+  return { ok: true, path: targetPath };
+});
+
 ipcMain.handle('auth:google', async () => {
   const supabase = await getSupabase();
   const { data, error } = await supabase.auth.signInWithOAuth({

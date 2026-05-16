@@ -9,6 +9,7 @@ A Windows-first remote support MVP with:
 - Separate approval before remote control
 - WebRTC screen sharing
 - WebRTC data channel for remote input events
+- Bidirectional file transfer during a connected session
 - Session end/revoke controls
 
 ## Run Locally
@@ -42,6 +43,7 @@ Current support:
 - Mouse move on the host primary screen
 - Left, middle, and right mouse click
 - Common keyboard keys, letters, digits, arrows, Enter, Tab, Backspace, Escape, Delete, Home, End, PageUp, and PageDown
+- File sending in either direction, saved to `Downloads\Ultraview Received`
 
 Production recommendation: replace the PowerShell helper with a signed native Windows helper executable before public release.
 
@@ -50,7 +52,6 @@ Production recommendation: replace the PowerShell helper with a signed native Wi
 - Deploy the signaling server with `Dockerfile` or `deploy/docker-compose.yml`.
 - Point both desktop clients to the same public signaling URL, for example `wss://signaling.example.com`.
 - See `PRODUCTION.md` for the live deployment steps.
-- Add real Windows input injection helper.
 - Add authentication.
 - Store audit logs in PostgreSQL.
 - Add Redis-backed session expiry.

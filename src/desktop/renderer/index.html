@@ -58,7 +58,6 @@
           </label>
           <button id="joinSessionButton" class="primary">Join Session</button>
           <button id="requestControlButton" disabled>Request Control</button>
-          <button id="testControlButton" disabled>Test Control</button>
         </section>
 
         <section class="panel">
@@ -76,6 +75,13 @@
             <input id="chatInput" maxlength="1000" placeholder="Type a message" />
             <button type="submit">Send</button>
           </form>
+        </section>
+
+        <section class="file-panel">
+          <h2>File Transfer</h2>
+          <input id="fileInput" type="file" />
+          <button id="sendFileButton" disabled>Send File</button>
+          <p id="fileStatus">Connect to a session to send files.</p>
         </section>
       </aside>
 

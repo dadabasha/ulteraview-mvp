@@ -250,15 +250,20 @@ select {
   margin-bottom: 4px;
 }
 
-.chat-panel {
+.chat-panel,
+.file-panel {
   border-top: 1px solid #26313a;
   padding-top: 16px;
   display: grid;
   gap: 10px;
+}
+
+.chat-panel {
   min-height: 260px;
 }
 
-.chat-panel h2 {
+.chat-panel h2,
+.file-panel h2 {
   margin: 0;
   font-size: 15px;
 }
@@ -309,4 +314,11 @@ select {
   display: grid;
   grid-template-columns: 1fr 72px;
   gap: 8px;
+}
+
+.file-panel p {
+  margin: 0;
+  color: #9aa8b5;
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
