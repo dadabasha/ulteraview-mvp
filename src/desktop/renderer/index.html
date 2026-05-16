@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ultraview MVP</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">U</div>
+          <div>
+            <h1>Ultraview</h1>
+            <p id="connectionStatus">Disconnected</p>
+          </div>
+        </div>
+
+        <section class="account-panel">
+          <div>
+            <span>Account</span>
+            <strong id="accountStatus">Guest mode</strong>
+          </div>
+          <button id="googleLoginButton">Sign in with Google</button>
+        </section>
+
+        <div class="mode-switch">
+          <button id="hostModeButton" class="active">Host Session</button>
+          <button id="joinModeButton">Join Session</button>
+        </div>
+
+        <section class="panel">
+          <label>
+            Signaling URL
+            <input id="signalingUrlInput" value="ws://localhost:8787" />
+          </label>
+          <button id="saveSignalingUrlButton">Use Signaling URL</button>
+        </section>
+
+        <section id="hostPanel" class="panel">
+          <button id="startSessionButton" class="primary">Start Session</button>
+          <div class="code-block">
+            <span>Session Code</span>
+            <strong id="sessionCode">------</strong>
+          </div>
+          <label>
+            Screen source
+            <select id="sourceSelect"></select>
+          </label>
+          <button id="refreshSourcesButton">Refresh Sources</button>
+        </section>
+
+        <section id="joinPanel" class="panel hidden">
+          <label>
+            Session code
+            <input id="joinCodeInput" maxlength="6" placeholder="123456" />
+          </label>
+          <button id="joinSessionButton" class="primary">Join Session</button>
+          <button id="requestControlButton" disabled>Request Control</button>
+        </section>
+
+        <section class="panel">
+          <button id="approveJoinButton" class="success hidden">Approve Viewer</button>
+          <button id="rejectJoinButton" class="danger hidden">Reject Viewer</button>
+          <button id="approveControlButton" class="success hidden">Approve Control</button>
+          <button id="revokeControlButton" disabled>Revoke Control</button>
+          <button id="endSessionButton" class="danger" disabled>End Session</button>
+        </section>
+
+        <section class="chat-panel">
+          <h2>Chat</h2>
+          <div id="chatMessages" class="chat-messages"></div>
+          <form id="chatForm" class="chat-form">
+            <input id="chatInput" maxlength="1000" placeholder="Type a message" />
+            <button type="submit">Send</button>
+          </form>
+        </section>
+      </aside>
+
+      <section class="workspace">
+        <div class="stage">
+          <video id="remoteVideo" autoplay playsinline></video>
+          <video id="localPreview" autoplay muted playsinline></video>
+          <div id="emptyState" class="empty-state">
+            <h2>Ready to connect</h2>
+            <p>Start a host session or join with a code.</p>
+          </div>
+        </div>
+        <div class="activity">
+          <h2>Activity</h2>
+          <ol id="activityLog"></ol>
+        </div>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

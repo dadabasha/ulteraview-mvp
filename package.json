@@ -1,0 +1,45 @@
+{
+  "name": "ulteraview-mvp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Windows remote support MVP with Electron, WebRTC, WebSocket signaling, session codes, and consent prompts.",
+  "author": "Ultraview MVP",
+  "main": "src/desktop/main.js",
+  "scripts": {
+    "start": "npm run start:server",
+    "start:server": "node src/server/index.js",
+    "start:app": "electron .",
+    "dev": "concurrently \"npm run start:server\" \"wait-on tcp:8787 && npm run start:app\"",
+    "check": "node scripts/check.js",
+    "docker:build": "docker build -t ulteraview-signaling .",
+    "dist": "electron-builder --win portable"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.105.4",
+    "ws": "^8.18.1"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "electron": "^35.1.5",
+    "electron-builder": "^26.0.12",
+    "wait-on": "^8.0.3"
+  },
+  "build": {
+    "appId": "com.ulteraview.mvp",
+    "productName": "Ultraview MVP",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        "portable"
+      ],
+      "artifactName": "Ultraview-MVP-${version}.${ext}"
+    }
+  }
+}
