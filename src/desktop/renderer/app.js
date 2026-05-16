@@ -58,6 +58,39 @@ function setStatus(message) {
   els.connectionStatus.textContent = message;
 }
 
+function updateControlButtons() {
+  const dataChannelOpen = state.dataChannel?.readyState === 'open';
+  els.testControlButton.disabled = !(state.role === 'helper' && state.controlGranted && dataChannelOpen);
+}
+
+function attachDataChannel(channel) {
+  state.dataChannel = channel;
+  log(`Control data channel state: ${channel.readyState}.`);
+
+  channel.onopen = () => {
+    log('Control data channel ready.');
+    updateControlButtons();
+  };
+  channel.onclose = () => {
+    log('Control data channel closed.');
+    updateControlButtons();
+  };
+  channel.onerror = () => {
+    log('Control data channel error.');
+    updateControlButtons();
+  };
+
+  if (state.role === 'host') {
+    channel.onmessage = async (message) => {
+      if (!state.controlGranted) return;
+      const payload = JSON.parse(message.data);
+      await window.ulteraview.sendInput(payload);
+    };
+  }
+
+  updateControlButtons();
+}
+
 function renderAccount() {
   els.accountStatus.textContent = state.account?.name || state.account?.email || 'Not signed in';
   els.googleLoginButton.textContent = state.account ? 'Sign out' : 'Sign in with Google';
@@ -217,13 +250,13 @@ async function handleSignal(message) {
     case 'control.approved':
       state.controlGranted = true;
       els.revokeControlButton.disabled = state.role !== 'host';
-      els.testControlButton.disabled = state.role !== 'helper';
+      updateControlButtons();
       log('Remote control approved.');
       break;
     case 'control.revoked':
       state.controlGranted = false;
       els.revokeControlButton.disabled = true;
-      els.testControlButton.disabled = true;
+      updateControlButtons();
       log('Remote control revoked.');
       break;
     case 'chat.message':
@@ -318,15 +351,7 @@ async function startHostPeer() {
   const pc = createPeerConnection();
   for (const track of stream.getTracks()) pc.addTrack(track, stream);
 
-  pc.ondatachannel = (event) => {
-    state.dataChannel = event.channel;
-    state.dataChannel.onmessage = async (message) => {
-      if (!state.controlGranted) return;
-      const payload = JSON.parse(message.data);
-      await window.ulteraview.sendInput(payload);
-    };
-    log('Control data channel opened.');
-  };
+  attachDataChannel(pc.createDataChannel('control'));
 
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
@@ -336,8 +361,9 @@ async function startHostPeer() {
 
 async function startHelperPeer() {
   const pc = createPeerConnection();
-  state.dataChannel = pc.createDataChannel('control');
-  state.dataChannel.onopen = () => log('Control data channel ready.');
+  pc.ondatachannel = (event) => {
+    attachDataChannel(event.channel);
+  };
 }
 
 async function receiveOffer(offer) {
@@ -372,6 +398,7 @@ function resetSession() {
   state.remoteStream = null;
   state.controlGranted = false;
   state.pendingJoin = false;
+  updateControlButtons();
   els.remoteVideo.srcObject = null;
   els.localPreview.srcObject = null;
   els.emptyState.classList.remove('hidden');
