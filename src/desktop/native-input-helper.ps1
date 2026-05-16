@@ -1,26 +1,66 @@
-Add-Type -AssemblyName System.Windows.Forms
+$ErrorActionPreference = "Continue"
 
 $signature = @"
 using System;
 using System.Runtime.InteropServices;
 
 public static class NativeInput {
+  [StructLayout(LayoutKind.Sequential)]
+  public struct INPUT {
+    public uint type;
+    public InputUnion U;
+  }
+
+  [StructLayout(LayoutKind.Explicit)]
+  public struct InputUnion {
+    [FieldOffset(0)] public MOUSEINPUT mi;
+    [FieldOffset(0)] public KEYBDINPUT ki;
+  }
+
+  [StructLayout(LayoutKind.Sequential)]
+  public struct MOUSEINPUT {
+    public int dx;
+    public int dy;
+    public uint mouseData;
+    public uint dwFlags;
+    public uint time;
+    public UIntPtr dwExtraInfo;
+  }
+
+  [StructLayout(LayoutKind.Sequential)]
+  public struct KEYBDINPUT {
+    public ushort wVk;
+    public ushort wScan;
+    public uint dwFlags;
+    public uint time;
+    public UIntPtr dwExtraInfo;
+  }
+
+  [DllImport("user32.dll", SetLastError = true)]
+  public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+
   [DllImport("user32.dll")]
   public static extern bool SetCursorPos(int X, int Y);
 
-  [DllImport("user32.dll")]
-  public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
-
-  [DllImport("user32.dll")]
-  public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
-
   [DllImport("user32.dll", CharSet = CharSet.Unicode)]
   public static extern short VkKeyScan(char ch);
+
+  [DllImport("user32.dll")]
+  public static extern bool GetCursorPos(out POINT lpPoint);
+
+  [StructLayout(LayoutKind.Sequential)]
+  public struct POINT {
+    public int X;
+    public int Y;
+  }
 }
 "@
 
+Add-Type -AssemblyName System.Windows.Forms
 Add-Type -TypeDefinition $signature
 
+$INPUT_MOUSE = 0
+$INPUT_KEYBOARD = 1
 $MOUSEEVENTF_LEFTDOWN = 0x0002
 $MOUSEEVENTF_LEFTUP = 0x0004
 $MOUSEEVENTF_RIGHTDOWN = 0x0008
@@ -28,6 +68,34 @@ $MOUSEEVENTF_RIGHTUP = 0x0010
 $MOUSEEVENTF_MIDDLEDOWN = 0x0020
 $MOUSEEVENTF_MIDDLEUP = 0x0040
 $KEYEVENTF_KEYUP = 0x0002
+$KEYEVENTF_SCANCODE = 0x0008
+
+function Send-MouseInput {
+  param([uint32]$Flags)
+
+  $input = New-Object NativeInput+INPUT
+  $input.type = $INPUT_MOUSE
+  $input.U.mi.dx = 0
+  $input.U.mi.dy = 0
+  $input.U.mi.mouseData = 0
+  $input.U.mi.dwFlags = $Flags
+  $input.U.mi.time = 0
+  $input.U.mi.dwExtraInfo = [UIntPtr]::Zero
+  [NativeInput]::SendInput(1, @($input), [Runtime.InteropServices.Marshal]::SizeOf([type][NativeInput+INPUT])) | Out-Null
+}
+
+function Send-KeyboardInput {
+  param([uint16]$VirtualKey, [bool]$IsKeyUp)
+
+  $input = New-Object NativeInput+INPUT
+  $input.type = $INPUT_KEYBOARD
+  $input.U.ki.wVk = $VirtualKey
+  $input.U.ki.wScan = 0
+  $input.U.ki.dwFlags = $(if ($IsKeyUp) { $KEYEVENTF_KEYUP } else { 0 })
+  $input.U.ki.time = 0
+  $input.U.ki.dwExtraInfo = [UIntPtr]::Zero
+  [NativeInput]::SendInput(1, @($input), [Runtime.InteropServices.Marshal]::SizeOf([type][NativeInput+INPUT])) | Out-Null
+}
 
 function Get-VirtualKey {
   param([string]$Key, [string]$Code)
@@ -48,24 +116,27 @@ function Get-VirtualKey {
     "End" = 0x23
     "PageUp" = 0x21
     "PageDown" = 0x22
+    "Control" = 0x11
+    "Shift" = 0x10
+    "Alt" = 0x12
   }
 
   if ($special.ContainsKey($Key)) {
-    return [byte]$special[$Key]
+    return [uint16]$special[$Key]
   }
 
   if ($Code -match '^Key([A-Z])$') {
-    return [byte][char]$Matches[1]
+    return [uint16][char]$Matches[1]
   }
 
   if ($Code -match '^Digit([0-9])$') {
-    return [byte][char]$Matches[1]
+    return [uint16][char]$Matches[1]
   }
 
   if ($Key -and $Key.Length -eq 1) {
     $scan = [NativeInput]::VkKeyScan($Key[0])
     if ($scan -ne -1) {
-      return [byte]($scan -band 0xff)
+      return [uint16]($scan -band 0xff)
     }
   }
 
@@ -75,7 +146,7 @@ function Get-VirtualKey {
 function Move-Mouse {
   param([double]$X, [double]$Y)
 
-  $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+  $bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen
   $screenX = [Math]::Max($bounds.Left, [Math]::Min($bounds.Right - 1, [int]($bounds.Left + ($X * $bounds.Width))))
   $screenY = [Math]::Max($bounds.Top, [Math]::Min($bounds.Bottom - 1, [int]($bounds.Top + ($Y * $bounds.Height))))
   [NativeInput]::SetCursorPos($screenX, $screenY) | Out-Null
@@ -95,7 +166,7 @@ function Send-MouseButton {
   }
 
   if ($null -ne $flag) {
-    [NativeInput]::mouse_event($flag, 0, 0, 0, [UIntPtr]::Zero)
+    Send-MouseInput -Flags $flag
   }
 }
 
@@ -107,11 +178,7 @@ function Send-Key {
     return
   }
 
-  if ($Kind -eq "key.up") {
-    [NativeInput]::keybd_event($vk, 0, $KEYEVENTF_KEYUP, [UIntPtr]::Zero)
-  } else {
-    [NativeInput]::keybd_event($vk, 0, 0, [UIntPtr]::Zero)
-  }
+  Send-KeyboardInput -VirtualKey $vk -IsKeyUp ($Kind -eq "key.up")
 }
 
 Write-Output "READY"
@@ -124,23 +191,23 @@ while ($true) {
   }
 
   try {
-    $event = $line | ConvertFrom-Json
+    $remoteEvent = $line | ConvertFrom-Json
 
-    switch ($event.kind) {
+    switch ($remoteEvent.kind) {
       "mouse.move" {
-        Move-Mouse -X ([double]$event.x) -Y ([double]$event.y)
+        Move-Mouse -X ([double]$remoteEvent.x) -Y ([double]$remoteEvent.y)
       }
       "mouse.down" {
-        Send-MouseButton -Kind $event.kind -Button ([int]$event.button)
+        Send-MouseButton -Kind $remoteEvent.kind -Button ([int]$remoteEvent.button)
       }
       "mouse.up" {
-        Send-MouseButton -Kind $event.kind -Button ([int]$event.button)
+        Send-MouseButton -Kind $remoteEvent.kind -Button ([int]$remoteEvent.button)
       }
       "key.down" {
-        Send-Key -Kind $event.kind -Key $event.key -Code $event.code
+        Send-Key -Kind $remoteEvent.kind -Key $remoteEvent.key -Code $remoteEvent.code
       }
       "key.up" {
-        Send-Key -Kind $event.kind -Key $event.key -Code $event.code
+        Send-Key -Kind $remoteEvent.kind -Key $remoteEvent.key -Code $remoteEvent.code
       }
     }
   } catch {

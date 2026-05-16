@@ -6,6 +6,16 @@ const { spawn } = require('node:child_process');
 let helperProcess;
 let helperReady = false;
 let helperQueue = [];
+const inputLogPath = path.join(os.tmpdir(), 'ulteraview-input.log');
+
+function logInput(message, extra) {
+  try {
+    fs.appendFileSync(
+      inputLogPath,
+      `[${new Date().toISOString()}] ${message}${extra ? ` ${JSON.stringify(extra)}` : ''}\n`
+    );
+  } catch {}
+}
 
 function helperScriptPath() {
   const sourcePath = path.join(__dirname, 'native-input-helper.ps1');
@@ -19,6 +29,7 @@ function startHelper() {
   if (helperProcess && !helperProcess.killed) return;
 
   const scriptPath = helperScriptPath();
+  logInput('Starting native input helper', { scriptPath });
   helperReady = false;
   helperProcess = spawn(
     'powershell.exe',
@@ -31,6 +42,7 @@ function startHelper() {
 
   helperProcess.stdout.on('data', (chunk) => {
     const text = chunk.toString();
+    logInput('helper stdout', { text: text.trim() });
     if (text.includes('READY')) {
       helperReady = true;
       for (const payload of helperQueue.splice(0)) {
@@ -40,10 +52,13 @@ function startHelper() {
   });
 
   helperProcess.stderr.on('data', (chunk) => {
-    console.error('[native-input-helper]', chunk.toString());
+    const text = chunk.toString();
+    console.error('[native-input-helper]', text);
+    logInput('helper stderr', { text: text.trim() });
   });
 
-  helperProcess.on('exit', () => {
+  helperProcess.on('exit', (code, signal) => {
+    logInput('helper exited', { code, signal });
     helperProcess = null;
     helperReady = false;
     helperQueue = [];
@@ -52,6 +67,7 @@ function startHelper() {
 
 function writeInput(payload) {
   if (!helperProcess || helperProcess.killed || !helperProcess.stdin.writable) return;
+  logInput('write input', payload);
   helperProcess.stdin.write(`${JSON.stringify(payload)}\n`);
 }
 
@@ -63,6 +79,7 @@ function handleInput(payload) {
   startHelper();
 
   if (!helperReady) {
+    logInput('queue input', payload);
     helperQueue.push(payload);
     return { ok: true, queued: true };
   }
