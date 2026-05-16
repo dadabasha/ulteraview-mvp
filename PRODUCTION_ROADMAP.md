@@ -33,7 +33,7 @@ A Windows desktop remote support application with a simple mobile-style interfac
 - Real Google OAuth backend using your Google Cloud credentials
 - PostgreSQL database for users, sessions, and audit logs
 - Redis for session expiry and rate limiting
-- Real Windows keyboard/mouse injection through a signed native helper
+- Signed native Windows keyboard/mouse helper. The current build has a PowerShell-based helper for MVP testing.
 - Code signing certificate for the Windows app
 - HTTPS/WSS domain deployment
 - TURN credentials and public relay testing

@@ -33,11 +33,17 @@ npm run start:app
 
 In one client, click **Host Session** and then **Start Session**. In the other client, click **Join Session**, enter the code, and connect.
 
-## Important MVP Note
+## Remote Control Note
 
-The app includes the full consent, WebRTC, signaling, and control-message path. The actual Windows keyboard/mouse injection is isolated in `src/desktop/input-controller.js`. It currently logs incoming control events and is ready to be replaced by a native Windows input implementation such as a signed helper executable or a native Node module.
+The app includes consent-gated Windows mouse/keyboard injection through `src/desktop/native-input-helper.ps1`, launched by `src/desktop/input-controller.js`.
 
-That separation is intentional: real remote input injection on Windows should be implemented carefully, signed, permissioned, and tested outside the renderer process.
+Current support:
+
+- Mouse move on the host primary screen
+- Left, middle, and right mouse click
+- Common keyboard keys, letters, digits, arrows, Enter, Tab, Backspace, Escape, Delete, Home, End, PageUp, and PageDown
+
+Production recommendation: replace the PowerShell helper with a signed native Windows helper executable before public release.
 
 ## Production Checklist
 

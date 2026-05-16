@@ -435,18 +435,26 @@ els.remoteVideo.addEventListener('mousemove', (event) => {
 });
 
 els.remoteVideo.addEventListener('mousedown', (event) => {
+  event.preventDefault();
   sendControlEvent({ kind: 'mouse.down', button: event.button });
 });
 
 els.remoteVideo.addEventListener('mouseup', (event) => {
+  event.preventDefault();
   sendControlEvent({ kind: 'mouse.up', button: event.button });
 });
 
+els.remoteVideo.addEventListener('contextmenu', (event) => {
+  event.preventDefault();
+});
+
 window.addEventListener('keydown', (event) => {
+  if (state.controlGranted && state.role === 'helper') event.preventDefault();
   sendControlEvent({ kind: 'key.down', key: event.key, code: event.code });
 });
 
 window.addEventListener('keyup', (event) => {
+  if (state.controlGranted && state.role === 'helper') event.preventDefault();
   sendControlEvent({ kind: 'key.up', key: event.key, code: event.code });
 });
 
